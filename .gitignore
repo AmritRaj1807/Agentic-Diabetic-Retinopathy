@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+*.spec
+
+# Virtual environments
+venv/
+env/
+.env/
+.venv/
+
+# Model checkpoints and weights
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+models/
+
+# Training & test outputs
+*.log
+test_outputs/
+train_outputs/
+outputs/
+
+# Processed image folders
+processed/
+preprocessed/
+# Datasets
+dataset/
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
