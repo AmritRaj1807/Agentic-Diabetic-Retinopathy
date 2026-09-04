@@ -1,205 +1,425 @@
 # Diabetic Retinopathy Grading
-### Parallel EfficientNetB4 + Swin Transformer Base with CORN Ordinal Loss
+### EfficientNet-B4 + Swin Transformer Base with CORN Ordinal Classification
 
-> MSc Artificial Intelligence — University of Surrey | Individual Contribution to Group Project
-
-[![Live Demo](https://img.shields.io/badge/🤗%20HuggingFace-Live%20Demo-yellow)](https://huggingface.co/spaces/DRG-Group-34/Diabetic_Retinopathy_Grading)
+> Deep Learning-based Diabetic Retinopathy Severity Grading using the DeepDRiD dataset
 
 ---
 
 ## Overview
 
-This project develops an automated deep learning pipeline to grade **Diabetic Retinopathy (DR)** severity from retinal fundus images. DR is classified into five ordinal severity levels (0–4), ranging from no disease to proliferative retinopathy.
+This project implements an automated deep learning system for grading **Diabetic Retinopathy (DR)** from retinal fundus images.
 
-Because the labels represent monotonically increasing disease severity, the problem is framed as an **ordinal classification** task rather than standard multiclass classification. The final model is a parallel dual-backbone fusion of EfficientNetB4 and Swin Transformer Base, trained with **CORN (Conditional Ordinal Regression Networks) loss**, achieving a **Test QWK of 0.8077**.
+Diabetic Retinopathy is graded according to five ordered severity levels:
 
----
-
-## Live Demo
-
-The final model is deployed as an interactive web application on Hugging Face Spaces. Upload a retinal fundus image and the app returns the predicted DR severity grade (0–4).
-
-**[Try the app → Diabetic Retinopathy Grading on Hugging Face](https://huggingface.co/spaces/DRG-Group-34/Diabetic_Retinopathy_Grading)**
-
----
-
-## DR Severity Scale
-
-| Grade | Clinical Description |
+| Grade | Severity |
 |:---:|---|
 | 0 | No DR |
-| 1 | Mild |
-| 2 | Moderate |
-| 3 | Severe |
+| 1 | Mild DR |
+| 2 | Moderate DR |
+| 3 | Severe DR |
 | 4 | Proliferative DR |
 
----
+Since these classes represent an increasing level of disease severity, the problem is treated as an **ordinal classification** task rather than a conventional multiclass classification problem.
 
-## My Contribution
+The final model combines two complementary deep learning architectures:
 
-This repository documents my individual contribution within a larger group project:
+- **EfficientNet-B4** for fine-grained visual feature extraction
+- **Swin Transformer Base** for learning local and global retinal features
+- **CORN (Conditional Ordinal Regression Networks)** for ordinal prediction
 
-- Established single-model baselines for **Swin Transformer Base** and **EfficientNetB4**
-- Designed and evaluated a **preprocessing and augmentation pipeline** (RFOV Cropping, CLAHE, MixUp, Random Erasing)
-- Investigated and compared **ensemble, series, and parallel fusion architectures**
-- Implemented **CORN loss** for ordinal-aware training
-- Evaluated all models using **Quadratic Weighted Kappa (QWK)** and **Macro F1-score**
+The two backbones process the retinal image in parallel. Their learned feature representations are fused before being passed to the ordinal classification head.
 
 ---
 
-## Architecture
+## Model Architecture
 
-### Final Model: Parallel Dual-Backbone Fusion
+```text
+                    Retinal Fundus Image
+                            │
+                ┌───────────┴───────────┐
+                │                       │
+                ▼                       ▼
+          EfficientNet-B4        Swin Transformer Base
+                │                       │
+                ▼                       ▼
+        Feature Extraction      Feature Extraction
+                │                       │
+                └───────────┬───────────┘
+                            │
+                            ▼
+                     Feature Fusion
+                            │
+                            ▼
+                       Fusion Head
+                            │
+                            ▼
+                    CORN Ordinal Head
+                            │
+                     4 Ordinal Logits
+                            │
+                            ▼
+                  DR Severity Grade 0–4
+                  Why Two Backbones?
 
-Both backbones process the same retinal image independently. Their feature vectors are concatenated and passed to a shared fusion head.
+The two architectures provide complementary representations of retinal images.
 
-The output is **4 logits** for 5 ordinal classes, as required by the CORN loss formulation.
+Backbone	Role
+EfficientNet-B4	Extracts fine-grained local visual patterns, textures and retinal structures
+Swin Transformer Base	Captures local and global contextual relationships using shifted-window attention
 
-### Backbone Rationale
+The parallel architecture allows the model to combine convolutional and transformer-based representations before classification.
 
-| Backbone | Rationale |
-|---|---|
-| **Swin Transformer Base** | Shifted-window attention captures both local lesion detail (haemorrhages, exudates) and global retinal context |
-| **EfficientNetB4** | Efficient convolutional scaling extracts fine-grained local patterns: microaneurysms, vessel structures, and texture changes |
+CORN Ordinal Classification
 
-> Swin Transformer Base outperformed EfficientNetB4 as a standalone model. EfficientNetB4 was retained as a complementary feature extractor in the fusion architecture.
+Instead of directly predicting five independent class probabilities, the final model uses CORN (Conditional Ordinal Regression Networks).
 
----
+For five DR classes, the model produces four ordinal logits representing cumulative classification decisions:
 
-## Dataset & Preprocessing
+P(y > 0)
+P(y > 1)
+P(y > 2)
+P(y > 3)
 
-- Retinal fundus images linked to severity labels via CSV
-- **Stratified train/validation/test split** saved to disk to ensure consistent class balance across all experiments
+These predictions are converted into the final severity grade from 0 to 4.
 
-**Preprocessing variants evaluated:**
+This formulation is appropriate for Diabetic Retinopathy because confusing Grade 2 with Grade 3 is less severe than confusing Grade 0 with Grade 4.
 
-| Step | Description |
-|---|---|
-| Baseline | Original images, no preprocessing |
-| RFOV Cropping | Removes irrelevant black background; aligns the retinal field of view |
-| CLAHE Enhancement | Contrast Limited Adaptive Histogram Equalisation (clip limits 1.0 and 2.0 tested) |
+Dataset
 
-RFOV Cropping delivered the single largest preprocessing gain across experiments.
+This implementation uses the DeepDRiD v1.1 dataset.
 
----
+The regular fundus image dataset contains four images per patient and provides DR severity annotations for individual retinal images.
 
-## Augmentation & Loss Functions
+For this project:
 
-**Augmentation pipeline:**
-- Horizontal flip, Colour Jitter, Random Affine translation
-- MixUp (alpha=0.2), Label Smoothing, Random Erasing
+1,200 images were used for training
+400 images were used as the held-out evaluation set
+1,600 images were processed in total
+Five DR severity classes were used: 0–4
 
-**Loss functions evaluated:**
+The official DeepDRiD training and validation sets were kept separate for evaluation.
 
-| Loss | Notes |
-|---|---|
-| Weighted Cross Entropy | Baseline loss; class weights to handle imbalance |
-| Weighted Focal Loss | Down-weights easy examples |
-| **CORN Loss** ✓ | Ordinal-aware; best suited to graded severity labels |
+Class Distribution
+Training Set
+Class	Images
+0	540
+1	140
+2	234
+3	214
+4	72
+Total	1,200
+Evaluation Set
+Class	Images
+0	174
+1	46
+2	92
+3	68
+4	20
+Total	400
 
-CORN loss was selected for the final model as it explicitly models the ordinal structure of DR severity grades.
+The evaluation set was not used during model training.
 
----
+Preprocessing
 
-## Evaluation Metrics
+The preprocessing pipeline was applied to the retinal fundus images before training and evaluation.
 
-| Metric | Rationale |
-|---|---|
-| **Quadratic Weighted Kappa (QWK)** | Penalises larger grading errors more heavily — appropriate for ordered severity labels |
-| **Macro F1-score** | Gives equal weight to each class — handles class imbalance fairly |
+RFOV Cropping
 
----
+Region of Field of View (RFOV) cropping removes unnecessary black background surrounding the retinal field.
 
-## Results
+This allows the model to focus more strongly on the relevant retinal region.
 
-### Single-Model & Preprocessing Experiments
+CLAHE Enhancement
 
-| Configuration | Val F1 | Val QWK | Test F1 | Test QWK |
-|---|:---:|:---:|:---:|:---:|
-| Swin-B + Weighted CE | 0.5809 | 0.7541 | 0.5512 | 0.7580 |
-| Swin-B + Weighted CE + MixUp | 0.5769 | 0.7450 | 0.5792 | 0.7639 |
-| Swin-B + Label Smoothing | 0.5860 | 0.7465 | 0.5757 | 0.7669 |
-| RFOV Crop + Swin-B + MixUp | 0.5988 | 0.8021 | 0.5933 | 0.7887 |
-| CLAHE 2.0 + RFOV + Swin-B + MixUp | 0.6154 | 0.8004 | — | — |
+Contrast Limited Adaptive Histogram Equalisation (CLAHE) is applied to improve local contrast and enhance retinal structures.
 
-### Fusion & Ensemble Experiments
+The preprocessing pipeline therefore follows:
 
-| Configuration | Val F1 | Val QWK | Test F1 | Test QWK |
-|---|:---:|:---:|:---:|:---:|
-| EfficientNetB4 (standalone) | 0.4981 | 0.6667 | — | — |
-| Ensemble (Eff=0.2, Swin=0.8) | — | — | 0.6042 | 0.7951 |
-| Series fusion | 0.4795 | 0.6606 | 0.4649 | 0.6572 |
-| Parallel + linear + CORN | 0.6182 | 0.8061 | 0.6063 | 0.8017 |
-| **Final: Parallel + CORN + Random Erasing** | **0.6250** | **0.8096** | **0.6188** | **0.8077** |
+Original Fundus Image
+        │
+        ▼
+RFOV Cropping
+        │
+        ▼
+CLAHE Enhancement
+        │
+        ▼
+384 × 384 Image
+        │
+        ▼
+Model Input
+Data Augmentation
 
+The training pipeline includes augmentation techniques designed to improve generalisation:
 
-### Confusion Matrix — Final Model (Test Set)
+Horizontal flipping
+Colour jitter
+Random affine transformations
+MixUp
+Label smoothing
+Random erasing
 
-![Confusion matrix of the final parallel EfficientNetB4 + Swin-B + CORN model on the test set](confusion_matrix.png)
+These augmentations introduce controlled variation while preserving the underlying DR severity label.
 
-Most predictions cluster on or near the diagonal, consistent with the ordinal nature of DR grading — errors tend to occur between adjacent severity grades rather than distant ones.
+Training Configuration
+Parameter	Value
+Image Size	384 × 384
+Number of Classes	5
+Batch Size	14
+Epochs	20
+Optimizer	AdamW
+Learning Rate	3 × 10⁻⁵
+Weight Decay	1 × 10⁻⁴
+Scheduler	Cosine Annealing
+EfficientNet	EfficientNet-B4
+Transformer	Swin Transformer Base
+Loss	CORN
+Precision	Mixed Precision (AMP)
+Hardware	NVIDIA GPU
 
----
+Both EfficientNet-B4 and Swin Transformer Base use pretrained weights for transfer learning.
 
-## Training Setup
+Gradient checkpointing and mixed precision were used to reduce GPU memory requirements during training.
 
-| Technique | Role |
-|---|---|
-| Transfer learning (ImageNet) | Initialises both backbones with pretrained weights |
-| AdamW + weight decay | Stable fine-tuning with decoupled regularisation |
-| Cosine annealing scheduler | Gradual learning rate reduction for better convergence |
-| Mixed precision (AMP) | Reduces GPU memory usage and improves throughput |
-| Gradient checkpointing | Trades additional compute for reduced memory footprint |
-| Gradient clipping | Stabilises optimisation during fine-tuning |
-| Stratified saved split | Ensures fair, consistent comparison across all runs |
-| Top-k checkpoint saving | Retains best model weights by validation QWK |
-| Fixed random seeds | Full reproducibility across Python, NumPy, PyTorch, and CUDA |
+Model Selection
 
----
+During training, model checkpoints were saved according to validation Quadratic Weighted Kappa (QWK).
 
-## Key Findings
+The best checkpoint obtained during training was:
 
-- **Swin Transformer Base** was the stronger standalone backbone, outperforming EfficientNetB4 by a clear margin
-- **RFOV Cropping** provided the largest single preprocessing improvement
-- **Series fusion** was ineffective; **parallel fusion** consistently outperformed all other architectures
-- **CORN loss** improved over standard cross-entropy by respecting the ordinal structure of DR grades
-- Checkpoint selection by **validation QWK** (rather than loss) was essential, as later epochs exhibited overfitting
+Epoch: 15
+Validation QWK: 0.8943
 
----
+Checkpoint:
 
-## Usage
+model_epoch_015_qwk_0.8943.pth
 
-```bash
-# Install dependencies
+The validation score above represents the model's internal training-time validation result.
+
+The final performance reported below comes from the separate 400-image held-out DeepDRiD evaluation set.
+
+Results
+Final Evaluation Results
+
+The trained model was evaluated on the 400-image held-out DeepDRiD evaluation set.
+
+Metric	Result
+Accuracy	71.75%
+QWK	0.7813
+Micro F1	0.7175
+Weighted F1	0.7131
+Macro F1	0.6400
+CORN Loss	1.0412
+Per-Class Performance
+DR Grade	F1 Score	Recall
+0 — No DR	0.8034	0.8103
+1 — Mild	0.4444	0.4348
+2 — Moderate	0.6772	0.6957
+3 — Severe	0.7746	0.8088
+4 — Proliferative	0.5000	0.3500
+Confusion Matrix
+
+The confusion matrix shows that the model performs particularly well on No DR and Severe DR cases.
+
+Most incorrect predictions occur between neighbouring severity levels. For example:
+
+Mild DR → No DR
+Moderate DR → Severe DR
+Severe DR → Moderate DR
+Proliferative DR → Severe/Moderate DR
+
+This behaviour is consistent with the ordinal nature of the problem.
+
+Large jumps between distant severity grades are relatively uncommon.
+
+Why QWK Is Important
+
+Quadratic Weighted Kappa (QWK) is used as the primary evaluation metric because DR severity is ordinal.
+
+A prediction such as:
+
+Actual:      Grade 2
+Predicted:   Grade 3
+
+is a smaller grading error than:
+
+Actual:      Grade 2
+Predicted:   Grade 0
+
+QWK accounts for this difference, making it more suitable for evaluating ordinal DR grading than accuracy alone.
+
+The final model achieved:
+
+QWK = 0.7813
+
+on the held-out evaluation set.
+
+Key Findings
+EfficientNet-B4 + Swin Transformer Base provides a complementary dual-backbone architecture.
+CORN is suitable for the ordinal structure of DR severity.
+RFOV cropping helps focus the model on the relevant retinal field of view.
+CLAHE improves local retinal contrast before model inference.
+The model performs strongest on No DR and Severe DR.
+Mild DR is more difficult to distinguish from No DR.
+Proliferative DR has lower recall, partly due to the relatively small number of Grade 4 samples in the evaluation set.
+Most classification errors occur between neighbouring severity grades rather than distant classes.
+The final held-out evaluation achieved 71.75% accuracy and 0.7813 QWK.
+Project Structure
+Diabetic-Retinopathy-Grading/
+│
+├── Preprocessing.py
+├── Train.py
+├── Test.py
+├── README.md
+├── requirements.txt
+├── confusion_matrix.png
+├── .gitignore
+│
+├── dataset/              # Local dataset - excluded from Git
+│
+├── outputs/              # Local training outputs - excluded from Git
+│
+└── test_outputs/         # Local evaluation outputs - excluded from Git
+
+Large datasets, trained model checkpoints and generated outputs are intentionally excluded from the Git repository.
+
+Installation
+
+Clone the repository and install the required dependencies:
+
+git clone <YOUR_REPOSITORY_URL>
+cd Diabetic-Retinopathy-Grading
+
 pip install -r requirements.txt
+Usage
+1. Prepare the Dataset
 
-# 1. Preprocess retinal images (RFOV Cropping + CLAHE)
+Download and extract the DeepDRiD dataset.
+
+The project expects the relevant DeepDRiD regular fundus images and label CSV files to be available locally.
+
+The dataset is intentionally not included in this repository because of its size and dataset licensing/distribution considerations.
+
+2. Configure Preprocessing
+
+Update the paths in the Config section of:
+
+Preprocessing.py
+
+Set:
+
+input_dir
+output_dir
+csv_path
+
+Then run:
+
 python Preprocessing.py
+3. Train the Model
 
-# 2. Train the model (update paths in Train.py Config before running)
+Configure the dataset and output paths in:
+
+Train.py
+
+Then run:
+
 python Train.py
 
-# 3. Evaluate on the test set (update paths in Test.py Config before running)
+The best checkpoints are saved according to validation QWK.
+
+4. Evaluate the Model
+
+Configure the following paths in:
+
+Test.py
+model_path
+test_dir
+csv_path
+
+Then run:
+
 python Test.py
-```
 
-> Update the `data_dir`, `csv_path`, and `model_path` fields in the `Config` dataclass at the top of each script to point to your local dataset and checkpoint.
+The evaluation script generates:
 
----
+test_metrics.csv
+test_predictions.csv
+confusion_matrix.png
+test.log
+Example Output
+================ TEST RESULTS ================
 
-## Tech Stack
+Accuracy        : 0.7175
+QWK             : 0.7813
+Micro F1        : 0.7175
+Weighted F1     : 0.7131
+Macro F1        : 0.6400
 
-- **Deep Learning:** PyTorch, timm (Swin Transformer), Torchvision
-- **Ordinal Loss:** CORN (Conditional Ordinal Regression Networks)
-- **Data & Analysis:** NumPy, Pandas, Scikit-learn, Matplotlib
-- **Training Infrastructure:** CUDA GPU, Mixed Precision (AMP)
-- **Language:** Python
+Per-class F1:
+C0 = 0.8034
+C1 = 0.4444
+C2 = 0.6772
+C3 = 0.7746
+C4 = 0.5000
+Technologies
+Python
+PyTorch
+Torchvision
+timm
+EfficientNet-B4
+Swin Transformer
+CORN Ordinal Regression
+NumPy
+Pandas
+Scikit-learn
+OpenCV
+Matplotlib
+CUDA / Mixed Precision
+Limitations
 
----
+The current system has several limitations:
 
-## About
+The evaluation dataset contains relatively few Grade 4 (Proliferative DR) samples.
+Mild DR remains difficult to distinguish from No DR.
+The current training pipeline uses an image-level validation split internally, while DeepDRiD contains multiple images per patient. Therefore, the internal validation score should not be interpreted as the final generalisation performance.
+The reported 0.7813 QWK is therefore based on the separate held-out DeepDRiD evaluation set and is the primary result reported by this implementation.
+Future Work
 
-This project was completed as part of an MSc Artificial Intelligence group coursework submission at the **University of Surrey**. This repository covers my individual contribution to the overall group effort.
+Potential extensions include:
 
-**Author:** Bilal Ahmad Sami  
-**Programme:** MSc Artificial Intelligence, University of Surrey
+Patient-level train/validation splitting
+Improved handling of class imbalance
+Uncertainty estimation and confidence-aware predictions
+Explainability using Grad-CAM and transformer attention
+Automated image-quality assessment
+Interactive web-based inference
+Agentic AI orchestration for automated screening workflows
+Integration of multiple retinal images for patient-level assessment
+Disclaimer
+
+This project is intended for research and educational purposes only.
+
+The model is not a medical diagnostic device and should not be used as a substitute for assessment by a qualified ophthalmologist or other healthcare professional.
+
+Acknowledgements
+
+This project uses the DeepDRiD dataset for diabetic retinopathy grading research.
+
+The implementation builds upon established deep learning architectures including EfficientNet and Swin Transformer, with CORN used for ordinal regression.
+
+
+### One thing I'd specifically keep
+
+I **would keep the "Future Work → Agentic AI" section** for now.
+
+Because then your GitHub evolution can naturally become:
+
+```text
+Version 1
+Deep Learning DR Grading
+        ↓
+Version 2
+Explainable DR Grading
+        ↓
+Version 3
+Agentic DR Screening System
