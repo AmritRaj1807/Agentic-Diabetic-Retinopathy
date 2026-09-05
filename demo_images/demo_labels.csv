@@ -1,0 +1,6 @@
+filename,actual_class,actual_label,source_image
+grade0_379_r2.jpg,0,No DR,379_r2.jpg
+grade1_333_r2.jpg,1,Mild,333_r2.jpg
+grade2_337_r2.jpg,2,Moderate,337_r2.jpg
+grade3_345_l2.jpg,3,Severe,345_l2.jpg
+grade4_265_r2.jpg,4,Proliferative DR,265_r2.jpg
