@@ -1,116 +1,89 @@
 # Diabetic Retinopathy Grading
-### EfficientNet-B4 + Swin Transformer Base with CORN Ordinal Classification
 
-> Deep Learning-based Diabetic Retinopathy Severity Grading using the DeepDRiD dataset
+Deep learning-based diabetic retinopathy (DR) screening prediction using regular fundus images from DeepDRiD v1.1.
+
+This project trains, evaluates, and runs single-image inference with a dual-backbone ordinal model:
+
+- EfficientNet-B4
+- Swin Transformer Base 384
+- Feature fusion head
+- CORN ordinal classification
+
+This is a research and education project. Model outputs are screening predictions and are not a substitute for professional medical evaluation.
 
 ---
 
-## Overview
+## DR Grades
 
-This project implements an automated deep learning system for grading **Diabetic Retinopathy (DR)** from retinal fundus images.
-
-Diabetic Retinopathy is graded according to five ordered severity levels:
-
-| Grade | Severity |
+| Class | Label |
 |:---:|---|
 | 0 | No DR |
-| 1 | Mild DR |
-| 2 | Moderate DR |
-| 3 | Severe DR |
+| 1 | Mild |
+| 2 | Moderate |
+| 3 | Severe |
 | 4 | Proliferative DR |
 
-Since these classes represent an increasing level of disease severity, the problem is treated as an **ordinal classification** task rather than a conventional multiclass classification problem.
-
-The final model combines two complementary deep learning architectures:
-
-- **EfficientNet-B4** for fine-grained visual feature extraction
-- **Swin Transformer Base** for learning local and global retinal features
-- **CORN (Conditional Ordinal Regression Networks)** for ordinal prediction
-
-The two backbones process the retinal image in parallel. Their learned feature representations are fused before being passed to the ordinal classification head.
+The classes are ordered by disease severity, so the project treats grading as an ordinal classification problem rather than a standard five-class softmax task.
 
 ---
 
-## Model Architecture
+## Model
+
+The implemented model is:
 
 ```text
-                    Retinal Fundus Image
-                            │
-                ┌───────────┴───────────┐
-                │                       │
-                ▼                       ▼
-          EfficientNet-B4        Swin Transformer Base
-                │                       │
-                ▼                       ▼
-        Feature Extraction      Feature Extraction
-                │                       │
-                └───────────┬───────────┘
-                            │
-                            ▼
-                     Feature Fusion
-                            │
-                            ▼
-                       Fusion Head
-                            │
-                            ▼
-                    CORN Ordinal Head
-                            │
-                     4 Ordinal Logits
-                            │
-                            ▼
-                  DR Severity Grade 0–4
+Fundus image
+    |
+    +--> EfficientNet-B4 feature extractor
+    |
+    +--> Swin Transformer Base 384 feature extractor
+              |
+              v
+       feature concatenation
+              |
+              v
+          fusion head
+              |
+              v
+       4 CORN ordinal logits
+              |
+              v
+       predicted DR grade 0-4
 ```
 
-### Why Two Backbones?
+For five DR classes, CORN produces four ordinal logits. The evaluation and prediction code convert those logits into a final grade using `coral_pytorch.dataset.corn_label_from_logits`.
 
-The two architectures provide complementary representations of retinal images.
-
-| Backbone | Role |
-|---|---|
-| **EfficientNet-B4** | Extracts fine-grained local visual patterns, textures and retinal structures |
-| **Swin Transformer Base** | Captures local and global contextual relationships using shifted-window attention |
-
-The parallel architecture combines convolutional and transformer-based representations before classification.
-
----
-
-## CORN Ordinal Classification
-
-Instead of directly predicting five independent class probabilities, the final model uses **CORN (Conditional Ordinal Regression Networks)**.
-
-For five DR classes, the model produces **four ordinal logits** representing cumulative classification decisions:
-
-```text
-P(y > 0)
-P(y > 1)
-P(y > 2)
-P(y > 3)
-```
-
-These predictions are converted into the final severity grade from **0 to 4**.
-
-This formulation is appropriate for Diabetic Retinopathy because confusing Grade 2 with Grade 3 is less severe than confusing Grade 0 with Grade 4.
+The model architecture is defined in `Train.py`, mirrored in `Test.py`, and reproduced in `predict.py` for standalone inference. The trained architecture and checkpoint are not changed by the inference script.
 
 ---
 
 ## Dataset
 
-This implementation uses the **DeepDRiD v1.1** dataset.
+This implementation uses the official DeepDRiD v1.1 regular fundus dataset.
 
-The regular fundus image dataset contains four images per patient and provides DR severity annotations for individual retinal images.
+Data used in this project:
 
-For this project:
+- 1,200 official DeepDRiD training images for model development
+- 400 official DeepDRiD validation images for final held-out evaluation
+- Ultra-widefield images were not used
+- Online challenge images were not used
 
-- **1,200 images** were used for training
-- **400 images** were used for the held-out evaluation set
-- **1,600 images** were processed in total
-- Five DR severity classes were used: **0–4**
+Local labels are stored as:
 
-The official DeepDRiD training and validation sets were kept separate for evaluation.
+```text
+dataset/deepdrid_train_labels.csv
+dataset/deepdrid_validation_labels.csv
+```
+
+Both CSV files use:
+
+```text
+image,level
+```
 
 ### Class Distribution
 
-#### Training Set
+Training set:
 
 | Class | Images |
 |:---:|---:|
@@ -119,9 +92,9 @@ The official DeepDRiD training and validation sets were kept separate for evalua
 | 2 | 234 |
 | 3 | 214 |
 | 4 | 72 |
-| **Total** | **1,200** |
+| Total | 1,200 |
 
-#### Evaluation Set
+Held-out evaluation set:
 
 | Class | Images |
 |:---:|---:|
@@ -130,132 +103,122 @@ The official DeepDRiD training and validation sets were kept separate for evalua
 | 2 | 92 |
 | 3 | 68 |
 | 4 | 20 |
-| **Total** | **400** |
+| Total | 400 |
 
-The evaluation set was not used during model training.
+The dataset and processed image folders are local artifacts and are intentionally excluded from Git.
 
 ---
 
 ## Preprocessing
 
-The preprocessing pipeline was applied to the retinal fundus images before training and evaluation.
+`Preprocessing.py` prepares fundus images before training and evaluation.
 
-### RFOV Cropping
+The preprocessing pipeline includes:
 
-**Region of Field of View (RFOV) cropping** removes unnecessary black background surrounding the retinal field.
+- Retinal field-of-view handling with automatic fundus cropping
+- Square padding to reduce shape distortion
+- Resizing to 384 x 384
+- CLAHE enhancement in LAB color space
+- JPEG output
 
-This allows the model to focus more strongly on the relevant retinal region.
+`Test.py` uses deterministic evaluation preprocessing:
 
-### CLAHE Enhancement
+- Load image as RGB
+- Resize to 384 x 384
+- Convert to tensor
+- Normalize with ImageNet mean/std
 
-**Contrast Limited Adaptive Histogram Equalisation (CLAHE)** is applied to improve local contrast and enhance retinal structures.
+`predict.py` reuses the existing `Preprocessing.py` pipeline for raw fundus images by default, then applies the same deterministic tensor transform used by `Test.py`. If an image has already been processed by `Preprocessing.py`, pass `--input-preprocessed`.
 
-The preprocessing pipeline follows:
-
-```text
-Original Fundus Image
-        │
-        ▼
-RFOV Cropping
-        │
-        ▼
-CLAHE Enhancement
-        │
-        ▼
-384 × 384 Image
-        │
-        ▼
-Model Input
-```
+Training-time augmentations are not applied during evaluation or single-image prediction.
 
 ---
 
-## Data Augmentation
+## Training
 
-The training pipeline includes augmentation techniques designed to improve generalisation:
+The training implementation uses:
 
-- Horizontal flipping
-- Colour jitter
-- Random affine transformations
+- AdamW optimizer
+- Learning rate `3e-5`
+- Weight decay `1e-4`
+- Up to 20 epochs
+- Cosine annealing scheduler
+- CUDA automatic mixed precision
+- Gradient checkpointing
+- Horizontal flip
+- Color jitter
+- Random affine transforms
 - MixUp
 - Label smoothing
 - Random erasing
 
-These augmentations introduce controlled variation while preserving the underlying DR severity label.
+Current saved epoch-15 run metadata reports:
 
----
-
-## Training Configuration
-
-| Parameter | Value |
-|---|---|
-| Image Size | 384 × 384 |
-| Number of Classes | 5 |
-| Batch Size | 14 |
+| Setting | Value |
+|---|---:|
+| Image size | 384 x 384 |
+| Number of classes | 5 |
+| Batch size | 2 |
 | Epochs | 20 |
-| Optimizer | AdamW |
-| Learning Rate | 3 × 10⁻⁵ |
-| Weight Decay | 1 × 10⁻⁴ |
-| Scheduler | Cosine Annealing |
-| EfficientNet | EfficientNet-B4 |
-| Transformer | Swin Transformer Base |
-| Loss | CORN |
-| Precision | Mixed Precision (AMP) |
-| Hardware | NVIDIA GPU |
+| Fusion hidden dimension | 1024 |
+| Fusion dropout | 0.3 |
 
-Both EfficientNet-B4 and Swin Transformer Base use pretrained weights for transfer learning.
-
-Gradient checkpointing and mixed precision were used to reduce GPU memory requirements during training.
+Before retraining, check the `Config` section in `Train.py` because these values are configurable.
 
 ---
 
-## Model Selection
+## Best Checkpoint
 
-During training, model checkpoints were saved according to validation **Quadratic Weighted Kappa (QWK)**.
-
-The best checkpoint obtained during training was:
+The best saved checkpoint is from epoch 15:
 
 ```text
-Epoch: 15
-Validation QWK: 0.8943
+outputs/exp_parallel_effb4_swinb384_corn_fusion_head/models/model_epoch_015_qwk_0.8943.pth
 ```
 
-Checkpoint:
+Internal training-time validation result:
 
 ```text
-model_epoch_015_qwk_0.8943.pth
+QWK = 0.8943
 ```
 
-The validation score above represents the model's internal training-time validation result.
-
-The final performance reported below comes from the separate **400-image held-out DeepDRiD evaluation set**.
+This internal validation QWK is not the final held-out evaluation result. The final evaluation below was measured separately on the 400 official DeepDRiD validation images.
 
 ---
 
-# Results
+## Final Held-Out Evaluation
 
-## Final Evaluation Results
-
-The trained model was evaluated on the 400-image held-out DeepDRiD evaluation set.
+The trained model was evaluated on the 400-image held-out DeepDRiD validation set.
 
 | Metric | Result |
 |---|---:|
-| **Accuracy** | **71.75%** |
-| **QWK** | **0.7813** |
+| Accuracy | 71.75% |
+| QWK | 0.7813 |
 | Micro F1 | 0.7175 |
 | Weighted F1 | 0.7131 |
 | Macro F1 | 0.6400 |
-| CORN Loss | 1.0412 |
+| CORN loss | 1.0412 |
 
-### Per-Class Performance
+### Per-Class F1
 
-| DR Grade | F1 Score | Recall |
-|:---:|---:|---:|
-| **0 — No DR** | **0.8034** | **0.8103** |
-| **1 — Mild** | 0.4444 | 0.4348 |
-| **2 — Moderate** | 0.6772 | 0.6957 |
-| **3 — Severe** | **0.7746** | **0.8088** |
-| **4 — Proliferative** | 0.5000 | 0.3500 |
+| Class | F1 |
+|:---:|---:|
+| 0 | 0.8034 |
+| 1 | 0.4444 |
+| 2 | 0.6772 |
+| 3 | 0.7746 |
+| 4 | 0.5000 |
+
+### Per-Class Recall
+
+| Class | Recall |
+|:---:|---:|
+| 0 | 0.8103 |
+| 1 | 0.4348 |
+| 2 | 0.6957 |
+| 3 | 0.8088 |
+| 4 | 0.3500 |
+
+Most errors occur between adjacent severity classes, which is consistent with the ordinal nature of DR grading.
 
 ---
 
@@ -263,60 +226,90 @@ The trained model was evaluated on the 400-image held-out DeepDRiD evaluation se
 
 ![Confusion matrix of the EfficientNet-B4 + Swin Transformer + CORN model](confusion_matrix.png)
 
-The confusion matrix shows that the model performs particularly well on **No DR** and **Severe DR** cases.
+---
 
-Most incorrect predictions occur between neighbouring severity levels. For example:
+## Single-Image Prediction
 
-- Mild DR → No DR
-- Moderate DR → Severe DR
-- Severe DR → Moderate DR
-- Proliferative DR → Severe/Moderate DR
+`predict.py` runs inference on one or more individual fundus images without retraining.
 
-This behaviour is consistent with the ordinal nature of the problem.
+From the project root:
 
-Large jumps between distant severity grades are relatively uncommon.
+```powershell
+python predict.py --image "path/to/image.jpg"
+```
+
+Demo image example:
+
+```powershell
+python predict.py --image "demo_images\grade2_337_r2.jpg"
+```
+
+`demo_images\grade2_337_r2.jpg` is copied from the held-out DeepDRiD validation set and has the reference label:
+
+```text
+Class 2 - Moderate
+```
+
+The label is for demonstration/reference only. It is not supplied to the model during prediction.
+
+### Prediction Behavior
+
+`predict.py`:
+
+1. Loads the trained checkpoint.
+2. Selects CUDA automatically when available, otherwise CPU.
+3. Applies the existing deterministic inference preprocessing.
+4. Runs the EfficientNet-B4 + Swin Transformer Base 384 fusion model.
+5. Obtains the CORN ordinal output.
+6. Converts the ordinal logits into a predicted DR grade with `corn_label_from_logits`.
+7. Reports the predicted grade, CORN-derived class probabilities, ordinal threshold probabilities, confidence, and raw logits through the Python API.
+
+For already processed images, use:
+
+```powershell
+python predict.py --image "dataset\processed_validation\some_image.jpg" --input-preprocessed
+```
+
+For multiple images:
+
+```powershell
+python predict.py --image "demo_images\grade0_379_r2.jpg" "demo_images\grade2_337_r2.jpg"
+```
+
+### Python API
+
+Future web interfaces can import the inference backend directly:
+
+```python
+from predict import load_inference_bundle, predict_image
+
+bundle = load_inference_bundle()
+result = predict_image("demo_images/grade2_337_r2.jpg", bundle=bundle)
+
+print(result["predicted_class"])
+print(result["predicted_label"])
+print(result["confidence"])
+print(result["class_scores"])
+```
+
+Load the bundle once in a web app so the checkpoint is not reloaded for every request.
 
 ---
 
-## Why QWK Is Important
+## Demo Images
 
-**Quadratic Weighted Kappa (QWK)** is used as the primary evaluation metric because DR severity is ordinal.
+The `demo_images/` folder contains a small set of copied examples from the held-out DeepDRiD validation set:
 
-A prediction such as:
+| File | Reference label |
+|---|---|
+| `grade0_379_r2.jpg` | Class 0, No DR |
+| `grade1_333_r2.jpg` | Class 1, Mild |
+| `grade2_337_r2.jpg` | Class 2, Moderate |
+| `grade3_345_l2.jpg` | Class 3, Severe |
+| `grade4_265_r2.jpg` | Class 4, Proliferative DR |
+| `demo_labels.csv` | Reference labels only |
 
-```text
-Actual:      Grade 2
-Predicted:   Grade 3
-```
-
-is a smaller grading error than:
-
-```text
-Actual:      Grade 2
-Predicted:   Grade 0
-```
-
-QWK accounts for this difference, making it more suitable for evaluating ordinal DR grading than accuracy alone.
-
-The final model achieved:
-
-> **QWK = 0.7813**
-
-on the held-out evaluation set.
-
----
-
-## Key Findings
-
-- **EfficientNet-B4 + Swin Transformer Base** provides a complementary dual-backbone architecture.
-- **CORN** is suitable for the ordinal structure of DR severity.
-- RFOV cropping helps focus the model on the relevant retinal field of view.
-- CLAHE improves local retinal contrast before model inference.
-- The model performs strongest on **No DR** and **Severe DR**.
-- **Mild DR** is more difficult to distinguish from No DR.
-- **Proliferative DR** has lower recall, partly due to the relatively small number of Grade 4 samples in the evaluation set.
-- Most classification errors occur between neighbouring severity grades rather than distant classes.
-- The final held-out evaluation achieved **71.75% accuracy and 0.7813 QWK**.
+The demo labels are not used by `predict.py`. During inference, the model receives only the image.
 
 ---
 
@@ -324,171 +317,106 @@ on the held-out evaluation set.
 
 ```text
 Diabetic-Retinopathy-Grading/
-│
-├── Preprocessing.py
-├── Train.py
-├── Test.py
-├── README.md
-├── requirements.txt
-├── confusion_matrix.png
-├── .gitignore
-│
-├── dataset/              # Local dataset - excluded from Git
-│
-├── outputs/              # Local training outputs - excluded from Git
-│
-└── test_outputs/         # Local evaluation outputs - excluded from Git
+|
++-- Preprocessing.py
++-- Train.py
++-- Test.py
++-- predict.py
++-- README.md
++-- README_PREDICTION.md
++-- requirements.txt
++-- confusion_matrix.png
++-- .gitignore
+|
++-- demo_images/
+|   +-- grade0_379_r2.jpg
+|   +-- grade1_333_r2.jpg
+|   +-- grade2_337_r2.jpg
+|   +-- grade3_345_l2.jpg
+|   +-- grade4_265_r2.jpg
+|   +-- demo_labels.csv
+|
++-- dataset/       # Local dataset, excluded from Git
++-- outputs/       # Local checkpoints and training outputs, excluded from Git
++-- test_outputs/  # Local evaluation outputs, excluded from Git
 ```
-
-Large datasets, trained model checkpoints and generated outputs are intentionally excluded from the Git repository.
 
 ---
 
 ## Installation
 
-Clone the repository and install the required dependencies:
+Install the direct project dependencies:
 
-```bash
-git clone <YOUR_REPOSITORY_URL>
-cd Diabetic-Retinopathy-Grading
-
+```powershell
 pip install -r requirements.txt
 ```
+
+The dependency file covers preprocessing, training, evaluation, Hugging Face-style export support, and single-image inference.
 
 ---
 
 ## Usage
 
-### 1. Prepare the Dataset
+### Preprocess Images
 
-Download and extract the DeepDRiD dataset.
+Configure paths in `Preprocessing.py`, then run:
 
-The project expects the relevant DeepDRiD regular fundus images and label CSV files to be available locally.
-
-The dataset is intentionally not included in this repository because of its size and dataset licensing/distribution considerations.
-
----
-
-### 2. Configure Preprocessing
-
-Update the paths in the `Config` section of:
-
-```text
-Preprocessing.py
-```
-
-Set:
-
-```python
-input_dir
-output_dir
-csv_path
-```
-
-Then run:
-
-```bash
+```powershell
 python Preprocessing.py
 ```
 
----
+### Train
 
-### 3. Train the Model
+Configure paths and training settings in `Train.py`, then run:
 
-Configure the dataset and output paths in:
-
-```text
-Train.py
-```
-
-Then run:
-
-```bash
+```powershell
 python Train.py
 ```
 
-The best checkpoints are saved according to validation QWK.
+### Evaluate
 
----
+Configure paths in `Test.py`, then run:
 
-### 4. Evaluate the Model
-
-Configure the following paths in:
-
-```text
-Test.py
-```
-
-```python
-model_path
-test_dir
-csv_path
-```
-
-Then run:
-
-```bash
+```powershell
 python Test.py
 ```
 
-The evaluation script generates:
+### Predict One Image
 
-```text
-test_metrics.csv
-test_predictions.csv
-confusion_matrix.png
-test.log
-```
-
----
-
-## Example Output
-
-```text
-================ TEST RESULTS ================
-
-Accuracy        : 0.7175
-QWK             : 0.7813
-Micro F1        : 0.7175
-Weighted F1     : 0.7131
-Macro F1        : 0.6400
-
-Per-class F1:
-C0 = 0.8034
-C1 = 0.4444
-C2 = 0.6772
-C3 = 0.7746
-C4 = 0.5000
+```powershell
+python predict.py --image "demo_images\grade2_337_r2.jpg"
 ```
 
 ---
 
 ## Technologies
 
-- **Python**
-- **PyTorch**
-- **Torchvision**
-- **timm**
-- **EfficientNet-B4**
-- **Swin Transformer**
-- **CORN Ordinal Regression**
-- **NumPy**
-- **Pandas**
-- **Scikit-learn**
-- **OpenCV**
-- **Matplotlib**
-- **CUDA / Mixed Precision**
+- Python
+- PyTorch
+- Torchvision
+- timm
+- coral-pytorch
+- EfficientNet-B4
+- Swin Transformer
+- CORN ordinal regression
+- NumPy
+- Pandas
+- Scikit-learn
+- Pillow
+- OpenCV
+- Matplotlib
+- tqdm
+- CUDA / AMP
 
 ---
 
 ## Limitations
 
-The current system has several limitations:
-
-- The evaluation dataset contains relatively few Grade 4 (Proliferative DR) samples.
-- Mild DR remains difficult to distinguish from No DR.
-- The current training pipeline uses an image-level validation split internally, while DeepDRiD contains multiple images per patient. Therefore, the internal validation score should not be interpreted as the final generalisation performance.
-- The reported **0.7813 QWK** is based on the separate held-out DeepDRiD evaluation set and is the primary result reported by this implementation.
+- The held-out evaluation set contains relatively few class 4 examples.
+- Mild DR is difficult to distinguish from no DR.
+- The internal training-time validation score should not be treated as final generalization performance.
+- Predictions are image-level screening predictions, not clinical diagnoses.
+- The current system does not yet include uncertainty estimation, explainability, or image-quality gating.
 
 ---
 
@@ -497,26 +425,26 @@ The current system has several limitations:
 Potential extensions include:
 
 - Patient-level train/validation splitting
-- Improved handling of class imbalance
-- Uncertainty estimation and confidence-aware predictions
-- Explainability using Grad-CAM and transformer attention
-- Automated image-quality assessment
-- Interactive web-based inference
-- Agentic AI orchestration for automated screening workflows
-- Integration of multiple retinal images for patient-level assessment
+- Improved class imbalance handling
+- Uncertainty estimation
+- Explainability such as Grad-CAM
+- Image-quality assessment
+- EfficientNet/Swin disagreement analysis
+- Web UI
+- Agentic accept/recheck/escalate workflow
+
+These items are future work and are not currently implemented.
 
 ---
 
 ## Disclaimer
 
-This project is intended for **research and educational purposes only**.
+This project is intended for research and educational use only.
 
-The model is not a medical diagnostic device and should not be used as a substitute for assessment by a qualified ophthalmologist or other healthcare professional.
+The model provides diabetic retinopathy screening predictions and decision-support style outputs. It is not a medical diagnostic device and is not a substitute for evaluation by a qualified eye-care or medical professional.
 
 ---
 
 ## Acknowledgements
 
-This project uses the **DeepDRiD** dataset for diabetic retinopathy grading research.
-
-The implementation uses established deep learning architectures including EfficientNet and Swin Transformer, with CORN used for ordinal regression.
+This project uses the DeepDRiD dataset for diabetic retinopathy grading research and builds on established PyTorch, timm, EfficientNet, Swin Transformer, and CORN ordinal regression tooling.

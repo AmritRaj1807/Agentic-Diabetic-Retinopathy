@@ -1,4 +1,4 @@
-# Core deep learning
+# Core deep learning for training, evaluation, and inference
 torch>=2.0.0
 torchvision>=0.15.0
 
@@ -8,16 +8,16 @@ timm>=0.9.0
 # Ordinal loss (CORN)
 coral-pytorch>=1.4.0
 
-# Model serialisation
+# Model serialisation/export support
 safetensors>=0.3.0
 
-# Data processing
+# Data processing and image loading
 numpy>=1.24.0
 pandas>=2.0.0
 scikit-learn>=1.3.0
 Pillow>=10.0.0
 
-# Image processing (preprocessing pipeline)
+# Image processing for Preprocessing.py and raw-image predict.py inference
 opencv-python-headless>=4.8.0
 
 # Visualisation
