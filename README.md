@@ -313,6 +313,68 @@ The demo labels are not used by `predict.py`. During inference, the model receiv
 
 ---
 
+## Web Dashboard
+
+`app.py` provides a Streamlit dashboard around the existing single-image inference pipeline. It accepts an uploaded fundus image or an optional project demo image, applies the same preprocessing and model path used by `predict.py`, and displays the model-predicted DR grade with supporting technical outputs.
+
+From the project root:
+
+```powershell
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+The project root is:
+
+```text
+D:\Projects\Diabetic Retinopathy\Diabetic-Retinopathy-Grading
+```
+
+### Dashboard Workflow
+
+1. Drop a JPG, JPEG, or PNG fundus image into the upload area.
+2. Review the image preview, filename, dimensions, color mode, and file size.
+3. Click `Analyze Image`.
+4. The dashboard runs preliminary image-quality heuristics.
+5. The image is passed to `predict.py`, which loads the cached inference bundle, applies the existing `Preprocessing.py` path, and runs the trained EfficientNet-B4 + Swin Transformer Base 384 + CORN fusion model.
+6. The dashboard displays the model-predicted grade, severity scale, CORN-derived class scores, ordinal threshold scores, raw logits, screening status, technical details, and held-out performance summary.
+
+The optional demo selector uses files from `demo_images/`. Demo reference labels are shown only as evaluation/demo metadata and are not supplied to the model.
+
+### Current Real Outputs
+
+The dashboard currently displays only outputs produced by the implemented inference code:
+
+- fused CORN predicted class
+- predicted DR label
+- CORN-derived class scores
+- ordinal threshold probabilities
+- raw CORN logits
+- inference device
+- checkpoint and preprocessing metadata
+- deterministic preliminary image-quality heuristics
+
+The class score shown as the top score is derived from the CORN ordinal outputs. It should not be interpreted as a calibrated clinical confidence estimate.
+
+### Future Extension Points
+
+The UI and service layer are intentionally separated so later model improvements can add new fields without replacing the dashboard. The current dashboard includes clearly labeled extension points for:
+
+- uncertainty estimation
+- model calibration
+- separate EfficientNet and Swin predictions
+- model disagreement
+- test-time augmentation summaries
+- Grad-CAM
+- transformer attention
+- image-quality assessment model
+- evidence consistency checks
+- agentic accept/recheck/human-review policy
+
+These advanced features are not fabricated in the current dashboard. They are shown only as unavailable future analysis layers until the model or inference service actually provides them.
+
+---
+
 ## Project Structure
 
 ```text
@@ -322,12 +384,17 @@ Diabetic-Retinopathy-Grading/
 +-- Train.py
 +-- Test.py
 +-- predict.py
++-- app.py
 +-- README.md
 +-- README_PREDICTION.md
 +-- requirements.txt
 +-- confusion_matrix.png
 +-- .gitignore
 |
++-- dashboard/
++|   +-- __init__.py
++|   +-- services.py
++|
 +-- demo_images/
 |   +-- grade0_379_r2.jpg
 |   +-- grade1_333_r2.jpg
@@ -351,7 +418,7 @@ Install the direct project dependencies:
 pip install -r requirements.txt
 ```
 
-The dependency file covers preprocessing, training, evaluation, Hugging Face-style export support, and single-image inference.
+The dependency file covers preprocessing, training, evaluation, Hugging Face-style export support, single-image inference, and the Streamlit web dashboard.
 
 ---
 
@@ -387,6 +454,12 @@ python Test.py
 python predict.py --image "demo_images\grade2_337_r2.jpg"
 ```
 
+### Launch Web Dashboard
+
+```powershell
+streamlit run app.py
+```
+
 ---
 
 ## Technologies
@@ -405,6 +478,7 @@ python predict.py --image "demo_images\grade2_337_r2.jpg"
 - Pillow
 - OpenCV
 - Matplotlib
+- Streamlit
 - tqdm
 - CUDA / AMP
 
@@ -417,6 +491,8 @@ python predict.py --image "demo_images\grade2_337_r2.jpg"
 - The internal training-time validation score should not be treated as final generalization performance.
 - Predictions are image-level screening predictions, not clinical diagnoses.
 - The current system does not yet include uncertainty estimation, explainability, or image-quality gating.
+- The dashboard image-quality panel uses deterministic heuristics, not a trained clinical quality model.
+- The dashboard does not yet include Grad-CAM, transformer attention, calibrated uncertainty, model disagreement, or automated accept/recheck/escalate decisions.
 
 ---
 
@@ -430,7 +506,6 @@ Potential extensions include:
 - Explainability such as Grad-CAM
 - Image-quality assessment
 - EfficientNet/Swin disagreement analysis
-- Web UI
 - Agentic accept/recheck/escalate workflow
 
 These items are future work and are not currently implemented.
